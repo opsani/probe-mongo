@@ -1,0 +1,152 @@
+'''
+Copyright (c) 2017, Opsani
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+License template: http://opensource.org/licenses/BSD-2-Clause
+                  (as accessed on June 2, 2015)
+
+probe-mongo - probe for assessing mongo instance(s) over a network
+'''
+from __future__   import print_function
+from probe_common import skpp
+from probe_common import probe
+
+import pymongo
+import sys
+
+# === definitions
+
+_dflt_timeout       = 120       # default action timeout in seconds
+_dflt_port          = 27017     # default port
+_dflt_database      = None      # default database name: if provided, must exist
+_dflt_user          = None      # default user
+_dflt_password      = None      # default password
+_connect_timeout_ms = 2000      # socket_connect timeout in milli-seconds
+
+# === operations
+
+def _mongo_up(host, return_client=False, port=_dflt_port, **dummy):
+    '''
+    Connect to mongo and list all databases.  Do not perform any authentication.
+    Note that the MongoClient() contructor returns at once and raises no error
+    if a connection is unavailable.  The timeout parameters and any subsequent
+    request requiring server access together will cause an exception on timeout.
+    '''
+    try:
+        port = int(port)
+        client = pymongo.MongoClient(host, port, connectTimeoutMS=_connect_timeout_ms,
+            serverSelectionTimeoutMS=_connect_timeout_ms)
+
+        # list all databases:  force timeout if no connection
+        dbnames = client.database_names()
+    except pymongo.errors.ConnectionFailure as e:
+        raise probe.UserError('failed to connect to mongo server at {}:{}: {}'.format(host, port, e))
+    except pymongo.errors.ServerSelectionTimeoutError as e:
+        raise probe.UserError('timed out waiting for mongo server selection at {}:{}: {}'.format(host, port, e))
+    except Exception as e:
+        raise probe.UserError('failed to verify mongo at {}:{}: {}'.format(host, port, e))
+    if return_client:
+        return client, dbnames
+    client.close()
+
+def _mongo_access(host, port=_dflt_port, database=_dflt_database, user=_dflt_user,
+    password=_dflt_password, **dummy):
+    '''
+    Connect to mongo and list all databases.  If provided, verify a particular
+    database exists, and if user is provided, authenticate to that database.
+    '''
+
+    # get mongo client:  verify mongo service is up and list its databases
+    client, dbnames = _mongo_up(host, return_client=True, port=port)
+
+    # if database is not None verify it is in the list of dbnames
+    if database is not None:
+        if database not in dbnames:
+            raise probe.UserValidationError('database {} does not exist on mongo server {}:{}'.format(
+                database, host, port))
+
+        # if user is not None authenticate to db (password is optional)
+        # note:  pymongo by default uses auth mechanism MONGODB-CR with server
+        # version < 3.0, and SCRAM-SHA-1 for later versions - we do not provide
+        # for specifying a particular mechanism
+        if user is not None:
+            exc = None
+            try:
+                db = client[database]
+                db.authenticate(user, password)
+            except Exception as e:
+                exc = e
+                pass
+            if exc:
+                raise probe.UserValidationError('failed to authenticate with database {}: {}'.format(database, exc))
+
+    client.close()
+
+# === action handlers
+
+def _service_up(project, inst=[], **args):
+    '''
+    Connect to each instance and list its databases:  no-op if no instances,
+    fail on first failure.
+    '''
+    for i in inst:
+        probe.wait_retry_op(args.get('timeout', _dflt_timeout),
+            lambda: _mongo_up(host=probe.extract_ip(i), **args))
+    return
+
+def _check_access(project, inst=[], **args):
+    '''
+    Connect to each instance, list its databases, and, if provided, authenticate
+    to a particular database:  no-op if no instances, fail on first failure.
+    '''
+    for i in inst:
+        probe.wait_retry_op(args.get('timeout', _dflt_timeout),
+            lambda: _mongo_access(host=probe.extract_ip(i), **args))
+    return
+
+# === Skopos plugin action wrappers
+
+@skpp.action
+def service_up(**args):
+    try:
+        _service_up(**args)
+    except (probe.UserError, probe.UserValidationError) as e:
+        print('Error:', str(e), file=sys.stderr)
+        sys.exit(1)
+    return args
+
+@skpp.action
+def check_access(**args):
+    try:
+        _check_access(**args)
+    except (probe.UserError, probe.UserValidationError) as e:
+        print('Error:', str(e), file=sys.stderr)
+        sys.exit(1)
+    return args
+
+# === Main
+
+if __name__ == "__main__":
+    skpp.run('probe-mongo', globals())
