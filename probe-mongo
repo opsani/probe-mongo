@@ -38,7 +38,7 @@ import sys
 
 # === definitions
 
-_dflt_timeout       = 120       # default action timeout in seconds
+_dflt_timeout       = 30        # default action timeout in seconds
 _dflt_port          = 27017     # default port
 _dflt_database      = None      # default database name: if provided, must exist
 _dflt_user          = None      # default user

@@ -9,7 +9,7 @@ The mongo probe supports the following actions:
 These actions support the following arguments:
 
 * `port` - port number (default `27017`)
-* `timeout` - operation timeout *per service instance*, in seconds (default `120`).  This is how long to keep retrying if the mongo service does not respond.
+* `timeout` - operation timeout *per service instance*, in seconds (default `30`).  This is how long to keep retrying if the mongo service does not respond.
 
 The `check_access` action supports the following additional arguments:
 
@@ -36,7 +36,7 @@ quality_gates:
                 image: opsani/probe-mongo:v1
                 action: check_access
                 label: "check mongo access on alternate port with timeout"
-                arguments: { port: 10000, timeout: 30 }
+                arguments: { port: 10000, timeout: 15 }
             - probe:
                 image: opsani/probe-mongo:v1
                 action: check_access
