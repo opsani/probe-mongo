@@ -44,7 +44,7 @@ quality_gates:
                 action: check_access
                 label: "check mongo access with user/password/database"
                 arguments:
-                    user: "my_user"
-                    password: "my_password"
-                    database: "my_database"
+                    user: my_user
+                    password: ${my_password}
+                    database: my_database
 ```
