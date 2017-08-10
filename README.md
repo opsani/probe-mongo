@@ -17,6 +17,8 @@ The `check_access` action supports the following additional arguments:
 * `password` - password (default `None`)
 * `database` - database (default `None`)
 
+Docker Hub repository:  <https://hub.docker.com/r/opsani/probe-mongo/>
+
 ## examples
 
 Here are a few examples in the form of quality gates specified in a Skopos TED file (target environment descriptor).  Quality gates associate probe executions to one or more component images.  During application deployment Skopos executes the specified probes to assess components deployed with matching images.
@@ -29,16 +31,16 @@ quality_gates:
         steps:
 
             # verify mongo service is up (default action service_up)
-            - probe: opsani/probe-mongo:v1
+            - probe: opsani/probe-mongo
 
             # verify mongo access
             - probe:
-                image: opsani/probe-mongo:v1
+                image: opsani/probe-mongo
                 action: check_access
                 label: "check mongo access on alternate port with timeout"
                 arguments: { port: 10000, timeout: 15 }
             - probe:
-                image: opsani/probe-mongo:v1
+                image: opsani/probe-mongo
                 action: check_access
                 label: "check mongo access with user/password/database"
                 arguments:
